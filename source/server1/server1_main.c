@@ -386,7 +386,28 @@ int main (int argc, char *argv[])
 		#endif
 
 		// TODO: Insert select for non-blocking wait condition
-		conn_fd = accept(listen_fd, (SA *)&client_addr, &client_addrlen);
+		conn_fd = Accept(listen_fd, (SA *)&client_addr, &client_addrlen);
+
+		// Check accept result
+
+		if (conn_fd < 0) {
+			if (INTERRUPTED_BY_SIGNAL ||
+				errno == EPROTO || errno == ECONNABORTED ||
+				errno == EMFILE || errno == ENFILE ||
+				errno == ENOBUFS || errno == ENOMEM) {
+				#if DEBUG
+					printf("warning: Failed accepting incoming connection, trying again\n");
+				#endif
+
+				continue;
+			} else {
+				#if DEBUG
+					printf("error: Failed accepting incoming connection\n");
+				#endif
+
+				continue;
+			}
+		}
 
 		// Set socket timeout and check correctness
 		struct timeval timeout;
@@ -405,30 +426,20 @@ int main (int argc, char *argv[])
 			#endif
 		}
 
-		// Check if connection was accepted correctly
-		if (conn_fd < 0)
-		{
-			#if DEBUG
-				printf("error %d: Failed accepting incoming connection\n", error);
-			#endif
+		#if DEBUG
+			printf("info: Incoming connection from %s:%u\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+		#endif
 
-		} else {
+		/* Read file request */
+		do {
+			read_buf_len = readreq(conn_fd, read_buf);
 
-			#if DEBUG
-				printf("info: Incoming connection from %s:%u\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-			#endif
+			//TODO: Handle multiple requests from same connection
+			res = handleRequest(conn_fd, read_buf, read_buf_len);
 
-			/* Read file request */
-			do {
-				read_buf_len = readreq(conn_fd, read_buf);
+		} while (read_buf_len > 0 && res == 1);
 
-				//TODO: Handle multiple requests from same connection
-				res = handleRequest(conn_fd, read_buf, read_buf_len);
-
-			} while (read_buf_len > 0 && res == 1);
-
-			Close(conn_fd);
-		}
+		//Close(conn_fd);
 	}
 
 	return 0;
