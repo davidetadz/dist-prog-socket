@@ -1,2 +1,0 @@
-GET README.md
-GET README.md

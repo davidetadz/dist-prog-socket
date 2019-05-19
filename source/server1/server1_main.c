@@ -254,7 +254,6 @@ int handleRequest(int conn_fd, const char* buf, int read_buf_len) {
 	f_size = ntohl(f_size);
 
 	// Send file content
-
 	//uint32_t bytes_sent = sendfile(conn_fd, fileno(f), NULL, BUF_SIZE);
 
 	uint32_t total_bytes_sent = 0, bytes_sent = 0, bytes_read = 0;
@@ -433,6 +432,11 @@ int main (int argc, char *argv[])
 		/* Read file request */
 		do {
 			read_buf_len = readreq(conn_fd, read_buf);
+
+			if (read_buf_len == 0) {
+				Close(conn_fd);
+				break;
+			}
 
 			//TODO: Handle multiple requests from same connection
 			res = handleRequest(conn_fd, read_buf, read_buf_len);
