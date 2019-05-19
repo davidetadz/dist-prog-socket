@@ -361,6 +361,7 @@ int main (int argc, char *argv[])
 	signal(SIGINT, sigHandler);
 	signal(SIGTERM, sigHandler);
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGCHLD, SIG_IGN);
 
 	// Check arguments
 	if (argc != 2) {
@@ -406,69 +407,79 @@ int main (int argc, char *argv[])
 
 		// Check accept result
 
-		if (conn_fd < 0) {
-			if (INTERRUPTED_BY_SIGNAL ||
-				errno == EPROTO || errno == ECONNABORTED ||
-				errno == EMFILE || errno == ENFILE ||
-				errno == ENOBUFS || errno == ENOMEM) {
-				#if DEBUG
-					printf("warning: Failed accepting incoming connection, trying again\n");
-				#endif
+		if (fork() == 0) {
+			
+			// Child
 
-				continue;
-			} else {
-				#if DEBUG
-					printf("error: Failed accepting incoming connection\n");
-				#endif
+			if (conn_fd < 0) {
+				if (INTERRUPTED_BY_SIGNAL ||
+					errno == EPROTO || errno == ECONNABORTED ||
+					errno == EMFILE || errno == ENFILE ||
+					errno == ENOBUFS || errno == ENOMEM) {
+					#if DEBUG
+						printf("warning: Failed accepting incoming connection, trying again\n");
+					#endif
 
-				continue;
+					continue;
+				} else {
+					#if DEBUG
+						printf("error: Failed accepting incoming connection\n");
+					#endif
+
+					continue;
+				}
 			}
-		}
 
-		// Set socket timeout and check correctness
-		struct timeval timeout;
-		timeout.tv_sec = 15;
-		timeout.tv_usec = 0;
-		if (setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+			// Set socket timeout and check correctness
+			struct timeval timeout;
+			timeout.tv_sec = 15;
+			timeout.tv_usec = 0;
+			if (setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+				#if DEBUG
+				printf("error: Failed setting receive timeout\n");
+				#endif
+			}
+
+			if (setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+			{
+				#if DEBUG
+				printf("error: Failed setting send timeout\n");
+				#endif
+			}
+
 			#if DEBUG
-			printf("error: Failed setting receive timeout\n");
+				printf("info: Incoming connection from %s:%u\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 			#endif
-		}
 
-		if (setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+			/* Read file request */
+			do {
+				read_buf_len = readreq(conn_fd, read_buf);
+
+				if (read_buf_len == 0) {
+
+					Close(conn_fd);
+					break;
+
+				} else if (read_buf_len < 0) {
+
+					#if DEBUG
+						printf("error: Read from socket failed, closing\n");
+					#endif
+					
+					break;
+				}
+
+				res = handleRequest(conn_fd, read_buf, read_buf_len);
+
+			} while (read_buf_len > 0 && res == 1);
+
+			printf("(%s) - connection closed by client: ending service of client\n", argv[0]);
+			exit(0);
+		} else
 		{
-			#if DEBUG
-			printf("error: Failed setting send timeout\n");
-			#endif
+			// Parent process
 		}
-
-		#if DEBUG
-			printf("info: Incoming connection from %s:%u\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-		#endif
-
-		/* Read file request */
-		do {
-			read_buf_len = readreq(conn_fd, read_buf);
-
-			if (read_buf_len == 0) {
-
-				Close(conn_fd);
-				break;
-
-			} else if (read_buf_len < 0) {
-
-				#if DEBUG
-					printf("error: Read from socket failed, closing\n");
-				#endif
-				
-				break;
-			}
-
-			res = handleRequest(conn_fd, read_buf, read_buf_len);
-
-		} while (read_buf_len > 0 && res == 1);
-
-		printf("(%s) - connection closed by client: ending service of client\n", argv[0]);
+		
 	}
 
 	return 0;

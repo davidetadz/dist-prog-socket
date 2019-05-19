@@ -132,10 +132,10 @@ function compileSource
         	echo -e "\tGCC log is available in $SOURCE_DIR/$GCC_OUTPUT"
     	else
         	TEST_03_PASSED=true
-            SERVER2_IS_PRESENT=true
         	echo -e "\tOk!"
     	fi
-    fi
+        SERVER2_IS_PRESENT=true
+     fi
 
     cd ..
 }
@@ -621,8 +621,10 @@ echo " - test 3.1: "${TEST_31_PASSED:-skipped}
 if [ "$SERVER2_IS_PRESENT" = true ] ; then
     echo ""
     echo " - test 4.1: "${TEST_41_PASSED:-skipped}
+    echo " - test 4.2: "${TEST_42_PASSED:-skipped}
     echo ""
     echo " - test 5.1: "${TEST_51_PASSED:-skipped}
+    echo " - test 5.2: "${TEST_52_PASSED:-skipped}
 fi
 
 echo " ------------------------"
