@@ -256,6 +256,10 @@ int handleRequest(int conn_fd, const char* buf, int read_buf_len) {
 	// Send file content
 	//uint32_t bytes_sent = sendfile(conn_fd, fileno(f), NULL, BUF_SIZE);
 
+	#if DEBUG
+		printf("info: sending file...\n");
+	#endif
+
 	uint32_t total_bytes_sent = 0, bytes_sent = 0, bytes_read = 0;
 	send_buf = (char *)malloc(BUF_SIZE * sizeof(char));
 
@@ -263,14 +267,21 @@ int handleRequest(int conn_fd, const char* buf, int read_buf_len) {
 	{
 		bytes_read = fread(send_buf, sizeof(char), BUF_SIZE, f);
 		bytes_sent = sendn(conn_fd, send_buf, bytes_read, 0);
+
+		if (bytes_sent == -1) {
+			// Error sending file
+			break;
+		}
+
 		total_bytes_sent += bytes_sent;
+
 	} while (bytes_sent > 0 && !feof(f));
 
 	// Check if file sent successful
 	if (total_bytes_sent != f_size)
 	{
 		#if DEBUG
-		printf("error: while sending file to client! difference %d\n", total_bytes_sent - f_size);
+		printf("error: while sending file to client! difference %d\n", f_size - total_bytes_sent);
 		printf("[%s]\n\n", strerror(errno));
 		#endif
 
@@ -343,15 +354,11 @@ int main (int argc, char *argv[])
 
 	// Check arguments
 	if (argc != 2) {
-		printf("Usage: server <port>\n");
+		printf("Usage: %s <port>\n", argv[0]);
 		return -1;
 	}
 
 	port = atoi(argv[1]);
-
-	#if DEBUG
-	printf("info: Port %d\n", port);
-	#endif
 
 	/* Create socket */
 	listen_fd = Socket(AF_INET, SOCK_STREAM, 0);
@@ -436,9 +443,24 @@ int main (int argc, char *argv[])
 			if (read_buf_len == 0) {
 				Close(conn_fd);
 				break;
+			} else if (read_buf_len < 0) {
+
+				int error = errno;
+
+				if (error == EWOULDBLOCK) {
+					#if DEBUG
+						printf("warning: Connection timeout, closing\n");
+					#endif
+				} else {
+					#if DEBUG
+						printf("error: Read from socket failed, closing\n");
+					#endif
+				}
+
+				Close(conn_fd);
+				break;
 			}
 
-			//TODO: Handle multiple requests from same connection
 			res = handleRequest(conn_fd, read_buf, read_buf_len);
 
 		} while (read_buf_len > 0 && res == 1);
